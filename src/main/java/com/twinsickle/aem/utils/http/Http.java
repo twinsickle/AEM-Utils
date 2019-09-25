@@ -3,7 +3,12 @@ package com.twinsickle.aem.utils.http;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import org.apache.http.*;
+import com.twinsickle.aem.utils.http.auth.AuthConfig;
+import com.twinsickle.aem.utils.http.auth.Authorization;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.StatusLine;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -27,10 +32,14 @@ public class Http<T> {
         JSON
     }
 
-    private Class<T> tClass;
+    private final Class<T> tClass;
 
-    public Http(Class<T> tClass){
+    private Http(Class<T> tClass){
         this.tClass = tClass;
+    }
+
+    public static <T> Http<T> of(Class<T> tClass){
+        return new Http<>(tClass);
     }
 
     public Optional<HttpResult<T>> get(String uri){
@@ -38,14 +47,36 @@ public class Http<T> {
         return execute(get);
     }
 
+    public Optional<HttpResult<T>> get(String uri, AuthConfig config){
+        HttpGet get = new HttpGet(uri);
+        Authorization auth = new Authorization(config);
+        auth.getAuthorizationHeader()
+                .ifPresent(get::setHeader);
+        return execute(get);
+    }
+
     public Optional<HttpResult<T>> post(String uri, Object obj, Type contentType){
+        return buildEntity(obj, contentType)
+                .flatMap(entity -> this.post(uri, entity));
+    }
+
+    public Optional<HttpResult<T>> post(String uri, Object obj, Type contentType, AuthConfig config){
+        Authorization auth = new Authorization(config);
         return buildEntity(obj, contentType)
                 .map(entity -> {
                     HttpPost post = new HttpPost(uri);
                     post.setEntity(entity);
+                    auth.getAuthorizationHeader()
+                            .ifPresent(post::setHeader);
                     return post;
                 })
                 .flatMap(this::execute);
+    }
+
+    public Optional<HttpResult<T>> post(String uri, HttpEntity request){
+        HttpPost post = new HttpPost(uri);
+        post.setEntity(request);
+        return execute(post);
     }
 
     private Optional<HttpEntity> buildEntity(Object obj, Type contentType){
@@ -80,24 +111,25 @@ public class Http<T> {
         int statusCode = statusLine.getStatusCode();
         boolean success = HttpStatus.SC_OK <= statusCode
                 && HttpStatus.SC_MULTIPLE_CHOICES > statusCode;
+        LOG.debug("Response status: {}", statusCode);
         return new ConcreteHttpResult(success, getPayload(response.getEntity()));
     }
 
     private T getPayload(HttpEntity entity){
         ContentType contentType = ContentType.get(entity);
-        try {
-            InputStream inputStream = entity.getContent();
-            if (ContentType.APPLICATION_XML.toString().equalsIgnoreCase(contentType.toString())) {
-                XmlMapper mapper = new XmlMapper();
-                return mapper.readValue(inputStream, tClass);
-            } else {
-//                Allowing JSON to be tried for anything not sent as XML due to issues with content type header
-//            } else if (ContentType.APPLICATION_JSON.toString().equalsIgnoreCase(contentType.toString())) {
-                ObjectMapper mapper = new ObjectMapper();
-                return mapper.readValue(inputStream, tClass);
+        if(contentType != null) {
+            try {
+                InputStream inputStream = entity.getContent();
+                if (ContentType.APPLICATION_XML.toString().equalsIgnoreCase(contentType.toString())) {
+                    XmlMapper mapper = new XmlMapper();
+                    return mapper.readValue(inputStream, tClass);
+                } else if (ContentType.APPLICATION_JSON.toString().equalsIgnoreCase(contentType.toString())) {
+                    ObjectMapper mapper = new ObjectMapper();
+                    return mapper.readValue(inputStream, tClass);
+                }
+            } catch (IOException ioe) {
+                LOG.warn("Http#handleResponse - Failed to retrieve response entity", ioe);
             }
-        } catch (IOException ioe){
-            LOG.warn("Http#handleResponse - Failed to retrieve response entity", ioe);
         }
         return null;
     }

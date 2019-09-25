@@ -16,6 +16,8 @@ import javax.mail.internet.InternetAddress;
 import java.util.Collection;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Component(service = MessageService.class)
 public class HtmlEmailMessageService implements MessageService {
@@ -47,15 +49,20 @@ public class HtmlEmailMessageService implements MessageService {
     }
 
     private Collection<InternetAddress> convertRecipients(List<String> recipients){
-        Collection<InternetAddress> addresses = new LinkedList<>();
-        for(String recipient : recipients){
-            try {
-                addresses.add(new InternetAddress(recipient));
-            } catch (AddressException ae){
-                LOG.warn("HtmlEmailMessageService - {} is an invalid recipient", recipient);
-            }
+        return recipients.stream()
+                .map(this::convertToInternetAddress)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toSet());
+    }
+
+    private Optional<InternetAddress> convertToInternetAddress(String recipient){
+        try {
+            return Optional.of(new InternetAddress(recipient));
+        } catch (AddressException ae){
+            LOG.warn("HtmlEmailMessageService - {} is an invalid recipient", recipient);
         }
-        return addresses;
+        return Optional.empty();
     }
 
 }

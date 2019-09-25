@@ -337,7 +337,7 @@
             <version>5.7.4</version>
             <scope>provided</scope>
         </dependency>
-        <!-- Orvis Custom-->
+        <!-- Custom-->
         <dependency>
             <artifactId>commons-email</artifactId>
             <version>1.5</version>
@@ -348,6 +348,21 @@
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
             <version>4.5.5</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-csv</artifactId>
+            <version>1.5</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jzlib</artifactId>
+            <version>1.1.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.jcraft</groupId>
+            <artifactId>jsch</artifactId>
+            <version>0.1.55</version>
         </dependency>
         <!-- Jackson -->
         <dependency>

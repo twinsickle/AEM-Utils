@@ -1,5 +1,7 @@
 package com.twinsickle.aem.utils.resource;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.jackrabbit.core.fs.FileSystem;
 import org.apache.sling.api.resource.Resource;
 import org.apache.sling.api.resource.ResourceResolver;
 
@@ -29,5 +31,8 @@ public interface ResourceResolverService {
 
     <R> Optional<R> map(String path, ResourceFunction<Optional<R>> function, String serviceUser);
 
+    static String buildPath(String... sections){
+        return StringUtils.join(sections, FileSystem.SEPARATOR_CHAR);
+    }
 }
 

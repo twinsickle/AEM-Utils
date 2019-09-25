@@ -8,8 +8,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.jcr.*;
-import java.util.Collection;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 public class JcrNodeBuilder {
     private static final Logger LOG = LoggerFactory.getLogger(JcrNodeBuilder.class);
@@ -79,50 +80,124 @@ public class JcrNodeBuilder {
         @Override
         public boolean hasValue(String name){
             return tryGet(node -> node.hasProperty(name))
-                    .orElse(Boolean.FALSE);
+                    .orElse(false);
         }
 
         @Override
         public Optional<Value> getValue(String name){
             return tryGet(node -> {
                 Property property = node.getProperty(name);
+                if(property.isMultiple()){
+                    return null;
+                }
                 return property.getValue();
             });
         }
 
         @Override
-        public void setValue(String name, Object value) {
+        public List<Value> getValues(String name){
+            return tryGet(node -> {
+                Property property = node.getProperty(name);
+                if(property.isMultiple()) {
+                    Value[] values = property.getValues();
+                    return Arrays.asList(values);
+                }
+                return new LinkedList<Value>();
+            }).orElse(Collections.emptyList());
+        }
+
+        @Override
+        public boolean setValue(String name, Object value) {
             if(value == null || StringUtils.isEmpty(name)){
                 LOG.warn("JcrNodeBuilder#setValue - parameters invalid");
-                return;
+                return false;
             }
-            trySet(node -> node.setProperty(name, ValueFactory.createValue(value)));
+            return trySet(node -> node.setProperty(name, ValueFactory.createValue(value)));
         }
 
         @Override
-        public void setValue(String name, Collection<?> values) {
+        public boolean setValue(String name, Collection<?> values) {
             if(values == null || StringUtils.isEmpty(name)){
                 LOG.warn("JcrNodeBuilder#setValue - parameters invalid");
-                return;
+                return false;
             }
-            trySet(node -> node.setProperty(name, ValueFactory.createValueArray(values)));
+            return trySet(node -> node.setProperty(name, ValueFactory.createValueArray(values)));
         }
 
         @Override
-        public void addMixin(String mixin){
-            trySet(node -> {
+        public boolean addValue(String name, Object value){
+            if(value == null || StringUtils.isEmpty(name)){
+                LOG.warn("JcrNodeBuilder#setValue - parameters invalid");
+                return false;
+            }
+            List<Value> values = new LinkedList<>();
+            if(hasValue(name)) {
+                tryGet(node -> {
+                    Property property = node.getProperty(name);
+                    try {
+                        if (property.isMultiple()) {
+                            return Arrays.asList(property.getValues());
+                        }
+                        return Collections.singletonList(property.getValue());
+                    } finally {
+                        property.remove();
+                    }
+                }).ifPresent(values::addAll);
+            }
+            return trySet(node -> {
+                values.add(ValueFactory.createValue(value));
+                node.setProperty(name, values.toArray(new Value[0]));
+            });
+        }
+
+        @Override
+        public boolean deleteValue(String name){
+            if(StringUtils.isEmpty(name)){
+                LOG.warn("JcrNodeBuilder#setValue - parameters invalid");
+                return false;
+            }
+            if(hasValue(name)){
+                return trySet(node -> node.getProperty(name).remove());
+            }
+            return false;
+        }
+
+        @Override
+        public boolean addMixin(String mixin){
+            return trySet(node -> {
                 if(node.canAddMixin(mixin)){
                     node.addMixin(mixin);
                 }
             });
         }
 
-        private void trySet(NodeConsumer function){
+        @Override
+        public Stream<JcrNode> getChildren(){
+            return tryGet(JcrUtils::getChildNodes)
+                    .map(itr -> StreamSupport.stream(itr.spliterator(), false))
+                    .map(stream -> stream.map(JcrNodeBuilder::getNode)
+                            .map(Optional::get))
+                    .orElse(Stream.empty());
+        }
+
+        @Override
+        public Optional<String> getPath(){
+            return tryGet(Node::getPath);
+        }
+
+        @Override
+        public Optional<String> getName(){
+            return tryGet(Node::getName);
+        }
+
+        private boolean trySet(NodeConsumer function){
             try {
                 function.apply(node);
+                return true;
             } catch (RepositoryException re){
                 LOG.warn("JcrNodeBuilder#trySet - failed to set property", re);
             }
+            return false;
         }
 
         private <T> Optional<T> tryGet(NodeFunction<T> function){

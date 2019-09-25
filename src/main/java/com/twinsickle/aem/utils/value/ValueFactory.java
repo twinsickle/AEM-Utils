@@ -6,9 +6,12 @@ import org.slf4j.LoggerFactory;
 import javax.jcr.*;
 import java.io.InputStream;
 import java.math.BigDecimal;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Date;
+import java.util.Locale;
 
 public final class ValueFactory {
     private static final Logger LOG = LoggerFactory.getLogger(ValueFactory.class);
@@ -24,10 +27,14 @@ public final class ValueFactory {
     }
 
     private static Value convertToValue(Object item){
+        if(item instanceof Value){
+            return (Value) item;
+        }
+
         try {
             return createValue(item);
         } catch (RepositoryException re){
-            LOG.warn("ValueFactory#convertToValue - Unable to convert to value", re);
+            LOG.debug("ValueFactory#convertToValue - Unable to convert to value", re);
             return null;
         }
     }
@@ -72,10 +79,28 @@ public final class ValueFactory {
 
         @Override
         public String getString() throws RepositoryException {
-            if(type == PropertyType.STRING){
-                return (String) value;
+            if(type == PropertyType.BINARY){
+                throw new ValueFormatException("Invalid format");
             }
-            throw new ValueFormatException("Value is not a String: " + value.getClass().getSimpleName());
+            return this.toString();
+        }
+
+        @Override
+        public String toString(){
+            if(value instanceof Calendar){
+                long secondsSinceEpoch = ((Calendar) value).getTimeInMillis();
+                if(secondsSinceEpoch < 0 ) {
+                    ((Calendar) value).setTimeInMillis(0 );
+
+                }
+
+                DateTimeFormatter format = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX")
+                        .withLocale(Locale.US)
+                        .withZone(ZoneId.systemDefault());
+                return format.format(((Calendar) value).toInstant());
+
+            }
+            return value.toString();
         }
 
         @Deprecated
